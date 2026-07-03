@@ -1,0 +1,44 @@
+"""Macroeconomic signal collector (design doc §10).
+
+Daily series for repo rate, CPI, USD/INR, crude, 10Y yield, India VIX and a
+NIFTY proxy. Slow-moving policy variables are step functions; market-linked
+ones follow seeded random walks. Values are market-wide (no symbol column).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from jasmin.collectors.base import BaseCollector
+
+
+class MacroCollector(BaseCollector):
+    name = "macro"
+
+    def fetch(self, symbols: list[str], days: int) -> pd.DataFrame:
+        rng = np.random.default_rng(20260703)
+        dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=days)
+        n = len(dates)
+
+        def walk(start: float, vol: float, drift: float = 0.0) -> np.ndarray:
+            return start * np.exp(np.cumsum(rng.normal(drift, vol, n)))
+
+        # Policy rates step every ~4 months rather than drifting daily.
+        repo = np.repeat(
+            rng.choice([6.0, 6.25, 6.5], size=n // 85 + 1), 85
+        )[:n]
+        cpi = np.clip(walk(5.0, 0.004), 2.5, 8.0)
+
+        return pd.DataFrame(
+            {
+                "date": dates,
+                "repo_rate": repo,
+                "cpi_inflation": cpi.round(2),
+                "usdinr": walk(84.0, 0.002).round(2),
+                "crude_usd": walk(78.0, 0.012).round(2),
+                "bond_yield_10y": np.clip(walk(7.0, 0.004), 5.5, 8.5).round(3),
+                "india_vix": np.clip(walk(13.5, 0.03), 8, 40).round(2),
+                "nifty_index": walk(24_000.0, 0.008, drift=0.0003).round(1),
+            }
+        )
