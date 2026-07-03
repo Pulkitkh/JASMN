@@ -28,7 +28,9 @@ def workspace(tmp_path_factory, monkeypatch_session=None):
         "jasmin.features.engineering", "jasmin.features", "jasmin.dataset.master",
         "jasmin.dataset", "jasmin.models.registry", "jasmin.models.train",
         "jasmin.models", "jasmin.prediction.confidence", "jasmin.prediction.explain",
-        "jasmin.prediction.predict", "jasmin.prediction", "jasmin.pipeline",
+        "jasmin.prediction.predict", "jasmin.prediction", "jasmin.live.http",
+        "jasmin.live.yahoo", "jasmin.live.nse", "jasmin.live.rss",
+        "jasmin.utils.market_calendar", "jasmin.prediction.summary", "jasmin.pipeline",
     ):
         importlib.reload(importlib.import_module(mod))
 

@@ -119,6 +119,13 @@ def build_feature_frame(
     news: pd.DataFrame,
 ) -> pd.DataFrame:
     """Merge all cleaned domains and compute the model feature matrix."""
+    # Bookkeeping columns (collection metadata) must not enter the merges.
+    _meta = ["collected_at", "source"]
+    prices = prices.drop(columns=_meta, errors="ignore")
+    fundamentals = fundamentals.drop(columns=_meta, errors="ignore")
+    macro = macro.drop(columns=_meta, errors="ignore")
+    institutional = institutional.drop(columns=_meta, errors="ignore")
+
     news_daily = _aggregate_news(news)
     macro = macro.sort_values("date")
 

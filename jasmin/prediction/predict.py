@@ -70,7 +70,7 @@ def predict(symbol: str, config: PipelineConfig | None = None,
 
     X = latest[features].to_frame().T.astype(float)
     medians = pd.Series(bundle["feature_stats"]["median"])
-    X = X.fillna(medians)
+    X = X.fillna(medians).fillna(0.0)
 
     member_probas = [
         float(c.predict_proba(X)[0, 1]) for c in bundle["classifiers"].values()

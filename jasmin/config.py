@@ -41,6 +41,23 @@ SECTOR_MAP = {
     "ICICIBANK": "BANKING",
 }
 
+# Aliases used to match news headlines to universe symbols (lowercase).
+COMPANY_ALIASES = {
+    "RELIANCE": ["reliance", "ril", "reliance industries", "ambani"],
+    "TCS": ["tcs", "tata consultancy"],
+    "INFY": ["infosys", "infy"],
+    "HDFCBANK": ["hdfc bank", "hdfcbank"],
+    "ICICIBANK": ["icici bank", "icicibank"],
+}
+
+# Slow-moving policy variables that have no reliable free API. Update these
+# when RBI/MoSPI publish new numbers, or override via data/config/macro.json.
+POLICY_MACRO_DEFAULTS = {
+    "repo_rate": 5.5,        # RBI repo rate
+    "cpi_inflation": 2.1,    # CPI YoY %
+    "bond_yield_10y": 6.3,   # 10Y G-Sec yield %
+}
+
 
 @dataclass
 class PipelineConfig:

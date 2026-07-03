@@ -112,39 +112,23 @@ class NewsCollector(BaseCollector):
 
     def fetch(self, symbols: list[str], days: int) -> pd.DataFrame:
         items = None
-        if not self.offline and self.feeds:
+        if not self.offline:
             items = self._fetch_rss(symbols)
         if items is None or items.empty:
             items = self._synthetic_headlines(symbols, days)
         return self._enrich(items)
 
     def _fetch_rss(self, symbols: list[str]) -> pd.DataFrame | None:
+        """Live headlines from Indian financial RSS feeds, matched to the
+        universe via company aliases and accumulated in a persistent log."""
         try:
-            import feedparser  # optional dependency
-        except ImportError:
-            self.log.info("feedparser not installed; using synthetic headlines")
+            from jasmin.live.rss import fetch_news
+
+            df = fetch_news(symbols, feeds=self.feeds or None)
+            return df if not df.empty else None
+        except Exception as exc:
+            self.log.warning("live news fetch failed (%s); using synthetic headlines", exc)
             return None
-        rows = []
-        for url in self.feeds:
-            try:
-                parsed = feedparser.parse(url)
-                for entry in parsed.entries:
-                    title = entry.get("title", "")
-                    matched = [s for s in symbols if s.lower() in title.lower()]
-                    if not matched:
-                        continue
-                    rows.append(
-                        {
-                            "date": pd.to_datetime(
-                                entry.get("published", pd.Timestamp.today())
-                            ).normalize(),
-                            "symbol": matched[0],
-                            "headline": title,
-                        }
-                    )
-            except Exception as exc:
-                self.log.warning("RSS fetch failed for %s: %s", url, exc)
-        return pd.DataFrame(rows) if rows else None
 
     def _synthetic_headlines(self, symbols: list[str], days: int) -> pd.DataFrame:
         dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=days)

@@ -1,10 +1,11 @@
 """Company fundamentals collector (design doc §8).
 
-Fundamentals change quarterly, so the collector emits one snapshot row per
-symbol per quarter covering the requested window. The synthetic source keeps
-values internally consistent (e.g. PE derived from EPS and price level) so
-downstream features behave sensibly. Swap in a real source (screener,
-exchange filings API) by overriding `_fetch_live`.
+Live mode pulls the current snapshot per symbol from Yahoo quoteSummary
+(PE, PB, EPS, ROE, margins, holdings, market cap, revenue growth). Yahoo
+only exposes present values, so the snapshot is stamped at the start of
+history and treated as constant across the daily grid — a documented
+approximation until a filings source provides true quarterly history.
+The synthetic source emits one snapshot per quarter for offline mode.
 """
 
 from __future__ import annotations
@@ -27,6 +28,35 @@ class FundamentalsCollector(BaseCollector):
     ]
 
     def fetch(self, symbols: list[str], days: int) -> pd.DataFrame:
+        if not self.offline:
+            live = self._fetch_live(symbols)
+            if live is not None:
+                return live
+        return self._fetch_synthetic(symbols, days)
+
+    def _fetch_live(self, symbols: list[str]) -> pd.DataFrame | None:
+        try:
+            from jasmin.live.yahoo import YahooClient
+
+            yahoo = YahooClient()
+            # Stamp at epoch-of-history so merge_asof(backward) applies the
+            # snapshot to every daily row, not just today's.
+            start = pd.Timestamp("2000-01-01")
+            rows = []
+            for sym in symbols:
+                snap = yahoo.fundamentals_snapshot(sym)
+                rows.append({"date": start, "symbol": sym, **snap})
+            df = pd.DataFrame(rows)
+            df["source"] = "yahoo"
+            self.log.info("live fundamentals: %d symbols", len(df))
+            return df
+        except Exception as exc:
+            self.log.warning(
+                "live fundamentals fetch failed (%s); using synthetic fundamentals", exc
+            )
+            return None
+
+    def _fetch_synthetic(self, symbols: list[str], days: int) -> pd.DataFrame:
         quarters = pd.date_range(
             end=pd.Timestamp.today().normalize(), periods=max(days // 90 + 1, 2), freq="QS"
         )

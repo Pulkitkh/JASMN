@@ -5,6 +5,8 @@
   jasmin train                               train & register a model version
   jasmin predict SYMBOL [SYMBOL...]          predict with explanation
   jasmin cycle [--offline]                   full collect->train->predict cycle
+  jasmin premarket [--no-retrain]            live refresh + market summary (pre-open)
+  jasmin market-status                       NSE calendar status (IST)
   jasmin models                              list registry versions
   jasmin approve VERSION / rollback          manage which model is live
   jasmin serve [--port P]                    start the FastAPI service
@@ -43,6 +45,16 @@ def main(argv: list[str] | None = None) -> int:
     p_cycle.add_argument("--days", type=int, default=400)
     p_cycle.add_argument("--offline", action="store_true")
 
+    p_pre = sub.add_parser(
+        "premarket", help="live data refresh + predictions + market summary"
+    )
+    p_pre.add_argument("--days", type=int, default=400)
+    p_pre.add_argument("--no-retrain", action="store_true",
+                       help="reuse the approved model instead of retraining")
+    p_pre.add_argument("--offline", action="store_true")
+
+    sub.add_parser("market-status", help="NSE market calendar status (IST)")
+
     sub.add_parser("models", help="list model registry versions")
     p_approve = sub.add_parser("approve", help="approve a model version")
     p_approve.add_argument("version")
@@ -55,6 +67,12 @@ def main(argv: list[str] | None = None) -> int:
     p_daemon = sub.add_parser("daemon", help="run the continuous-learning daemon")
     p_daemon.add_argument("--interval-hours", type=float, default=24)
     p_daemon.add_argument("--offline", action="store_true")
+
+    p_live = sub.add_parser(
+        "live-daemon", help="market-aware daemon: pre-market run each NSE trading day"
+    )
+    p_live.add_argument("--intraday-minutes", type=int, default=0,
+                        help="if >0, refresh predictions on this interval while the market is open")
 
     args = parser.parse_args(argv)
     config = PipelineConfig()
@@ -83,6 +101,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{pred['symbol']}: {pred['direction']} "
                   f"(p_up={pred['probability_up']}, move={pred['expected_move_pct']}%, "
                   f"confidence={pred['confidence']['score']})")
+    elif args.command == "premarket":
+        from jasmin.pipeline import run_premarket
+        result = run_premarket(
+            config, days=args.days, retrain=not args.no_retrain, offline=args.offline
+        )
+        _print(result["summary"])
+    elif args.command == "market-status":
+        from jasmin.utils.market_calendar import market_status
+        _print(market_status())
     elif args.command == "models":
         from jasmin.models.registry import ModelRegistry
         _print(ModelRegistry().list_versions())
@@ -99,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "daemon":
         from jasmin.scheduler.daemon import run_daemon
         run_daemon(interval_hours=args.interval_hours, offline=args.offline, config=config)
+    elif args.command == "live-daemon":
+        from jasmin.scheduler.daemon import run_live_daemon
+        run_live_daemon(config, intraday_minutes=args.intraday_minutes)
     return 0
 
 

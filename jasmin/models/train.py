@@ -34,8 +34,12 @@ def _prepare(master: pd.DataFrame, config: PipelineConfig):
     labeled = master.dropna(subset=["target_up"]).copy()
     # Drop the warm-up window where long indicators are still NaN.
     features = [c for c in FEATURE_COLUMNS if c in labeled.columns]
-    labeled = labeled.dropna(subset=features, thresh=int(len(features) * 0.9))
+    labeled = labeled.dropna(subset=features, thresh=int(len(features) * 0.7))
     labeled[features] = labeled[features].fillna(labeled[features].median(numeric_only=True))
+    # Columns that are entirely NaN (live sources that expose no history,
+    # e.g. earnings surprises) have no median either — neutral-fill so the
+    # sklearn ensembles never see NaN.
+    labeled[features] = labeled[features].fillna(0.0)
 
     # Flat moves teach the classifier nothing about direction.
     directional = labeled[labeled["target_move_pct"].abs() >= config.flat_threshold_pct]
