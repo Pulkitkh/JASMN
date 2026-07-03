@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Generated data & artifacts (keep directory structure via .gitkeep)
+data/raw/*
+data/clean/*
+data/features/*
+data/master/*
+models/store/*
+logs/*
+!data/raw/.gitkeep
+!data/clean/.gitkeep
+!data/features/.gitkeep
+!data/master/.gitkeep
+!models/store/.gitkeep
+!logs/.gitkeep

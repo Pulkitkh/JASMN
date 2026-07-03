@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jasmin-ai"
+version = "0.1.0"
+description = "JASMIN AI - explainable market intelligence platform for Indian equities"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+]
+
+[project.optional-dependencies]
+live = ["yfinance>=0.2", "feedparser>=6.0"]
+dev = ["pytest>=7.0", "httpx>=0.24"]
+
+[project.scripts]
+jasmin = "jasmin.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jasmin*"]
