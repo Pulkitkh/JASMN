@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from jasmin.collectors.base import BaseCollector
+from jasmin.utils.seeds import stable_seed
 
 
 class FundamentalsCollector(BaseCollector):
@@ -31,7 +32,7 @@ class FundamentalsCollector(BaseCollector):
         )
         rows = []
         for sym in symbols:
-            rng = np.random.default_rng(abs(hash(("fund", sym))) % (2**32))
+            rng = np.random.default_rng(stable_seed("fund", sym))
             eps = rng.uniform(20, 120)
             roe = rng.uniform(10, 26)
             for q in quarters:

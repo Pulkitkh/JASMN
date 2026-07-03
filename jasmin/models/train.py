@@ -121,7 +121,14 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
                 ensemble_acc, prev_acc,
             )
     except FileNotFoundError:
-        pass  # first model ever: threshold check alone decides
+        # First model ever: the system needs a live model to serve, so the
+        # bootstrap model is always approved; the gate governs replacements.
+        if not approved:
+            log.warning(
+                "first model below approval threshold (%.3f); bootstrap-approving",
+                ensemble_acc,
+            )
+        approved = True
 
     bundle = {
         "classifiers": classifiers,

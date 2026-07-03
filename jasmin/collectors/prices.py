@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from jasmin.collectors.base import BaseCollector
+from jasmin.utils.seeds import stable_seed
 
 TRADING_DAYS_PER_YEAR = 252
 
@@ -26,10 +27,10 @@ _BASE_PRICE = {
 
 
 def _synthetic_ohlcv(symbol: str, days: int) -> pd.DataFrame:
-    rng = np.random.default_rng(abs(hash(symbol)) % (2**32))
+    rng = np.random.default_rng(stable_seed("prices", symbol))
     dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=days)
 
-    base = _BASE_PRICE.get(symbol, 500.0 + (abs(hash(symbol)) % 3000))
+    base = _BASE_PRICE.get(symbol, 500.0 + stable_seed("base", symbol) % 3000)
     drift = rng.normal(0.0004, 0.0002)
     vol = rng.uniform(0.012, 0.022)
     # Mild regime cycles so indicators have real trends to detect.

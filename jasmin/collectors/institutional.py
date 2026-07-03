@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from jasmin.collectors.base import BaseCollector
+from jasmin.utils.seeds import stable_seed
 
 
 class InstitutionalCollector(BaseCollector):
@@ -28,7 +29,7 @@ class InstitutionalCollector(BaseCollector):
 
         rows = []
         for sym in symbols:
-            rng = np.random.default_rng(abs(hash(("inst", sym))) % (2**32))
+            rng = np.random.default_rng(stable_seed("inst", sym))
             pledge = np.clip(rng.normal(2, 2), 0, 30)
             rows.append(
                 pd.DataFrame(

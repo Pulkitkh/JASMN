@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from jasmin.collectors.base import BaseCollector
+from jasmin.utils.seeds import stable_seed
 
 # Event taxonomy with weights: how strongly each event type tends to move a
 # stock (design doc: "assigned confidence and event weights").
@@ -149,7 +150,7 @@ class NewsCollector(BaseCollector):
         dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=days)
         rows = []
         for sym in symbols:
-            rng = np.random.default_rng(abs(hash(("news", sym))) % (2**32))
+            rng = np.random.default_rng(stable_seed("news", sym))
             for date in dates:
                 # ~1 headline every 3 sessions per symbol.
                 if rng.random() > 0.33:
