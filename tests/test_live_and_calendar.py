@@ -65,7 +65,7 @@ def test_market_summary_aggregation(trained_pipeline):
     summary = build_market_summary(preds)
 
     assert summary["market_bias"] in ("BULLISH", "BEARISH", "NEUTRAL")
-    assert summary["n_up"] + summary["n_down"] == 3
+    assert summary["n_up"] + summary["n_down"] + summary["n_neutral"] == 3
     assert len(summary["predictions"]) == 3
     assert set(summary["sectors"]) <= {"ENERGY", "IT", "BANKING", "OTHER"}
     for pick in summary["top_bullish"]:

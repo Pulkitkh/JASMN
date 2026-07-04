@@ -35,12 +35,13 @@ def test_prediction_shape_and_explainability(trained_pipeline):
     from jasmin.prediction import predict
 
     pred = predict("RELIANCE", config=trained_pipeline["config"])
-    assert pred.direction in ("UP", "DOWN")
+    assert pred.direction in ("UP", "DOWN", "NEUTRAL")
     assert 0 <= pred.probability_up <= 1
     assert 0 <= pred.confidence["score"] <= 100
     assert set(pred.confidence["components"]) == {
         "probability_strength", "model_agreement", "feature_completeness",
         "data_freshness", "historical_accuracy", "volatility_regime",
+        "signal_alignment",
     }
     assert pred.explanation["positive_factors"] or pred.explanation["negative_factors"]
     for factor in pred.explanation["positive_factors"]:

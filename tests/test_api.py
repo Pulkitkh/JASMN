@@ -22,7 +22,7 @@ def test_predict_endpoint(trained_pipeline):
     assert resp.status_code == 200
     body = resp.json()
     assert body["symbol"] == "RELIANCE"
-    assert body["direction"] in ("UP", "DOWN")
+    assert body["direction"] in ("UP", "DOWN", "NEUTRAL")
     assert "explanation" in body and "confidence" in body
 
 

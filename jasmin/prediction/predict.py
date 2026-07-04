@@ -66,12 +66,20 @@ def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
     proba_up = float(np.mean(member_probas))
     expected_move = float(bundle["regressor"].predict(X)[0])
 
-    # Likely touch range from the quantile models, kept internally
-    # consistent: high >= max(move, 0), low <= min(move, 0).
+    # Touch ranges from the quantile models, kept internally consistent:
+    # typical (median) band nests inside the likely (75/25) band, and both
+    # contain the expected move.
     high_pct = float(bundle["high_regressor"].predict(X)[0])
     low_pct = float(bundle["low_regressor"].predict(X)[0])
     high_pct = max(high_pct, expected_move, 0.0)
     low_pct = min(low_pct, expected_move, 0.0)
+    typ_high = high_pct / 2
+    typ_low = low_pct / 2
+    if "typical_high_regressor" in bundle:
+        typ_high = float(bundle["typical_high_regressor"].predict(X)[0])
+        typ_low = float(bundle["typical_low_regressor"].predict(X)[0])
+    typ_high = min(max(typ_high, expected_move, 0.0), high_pct)
+    typ_low = max(min(typ_low, expected_move, 0.0), low_pct)
 
     # Conditional accuracy: judge the model by how it has performed in
     # market conditions like today's, not by its global average.
@@ -85,6 +93,14 @@ def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
     if regime_stats and regime_stats["n"] >= 50:
         accuracy = regime_stats["accuracy"]
 
+    # Direction and expected move must tell one story. When the classifier
+    # and regressor point opposite ways on a meaningful move, the honest
+    # stance is NEUTRAL ("no edge"), with confidence reduced.
+    clf_direction = "UP" if proba_up >= 0.5 else "DOWN"
+    move_direction = "UP" if expected_move >= 0 else "DOWN"
+    aligned = clf_direction == move_direction or abs(expected_move) < 0.1
+    direction = clf_direction if aligned else "NEUTRAL"
+
     conf = confidence_score(
         proba_up=proba_up,
         member_probas=member_probas,
@@ -92,20 +108,30 @@ def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
         staleness_days=staleness_days,
         validation_accuracy=accuracy,
         india_vix=vix,
+        signal_aligned=aligned,
     )
     conf["regime"] = {"key": regime, "accuracy_basis": round(float(accuracy), 4)}
+    if not aligned:
+        conf["note"] = (
+            "direction classifier and expected-move regressor disagree; "
+            "treat as no clear edge"
+        )
     explanation = explain(bundle["classifiers"], X.iloc[0], bundle["feature_stats"])
 
     prediction = Prediction(
         symbol=symbol,
         as_of=as_of,
         horizon_days=bundle["config"]["horizon_days"],
-        direction="UP" if proba_up >= 0.5 else "DOWN",
+        direction=direction,
         probability_up=round(proba_up, 4),
         expected_move_pct=round(expected_move, 3),
         price={
             "last_close": round(last_close, 2),
             "expected_close": round(last_close * (1 + expected_move / 100), 2),
+            # touched on ~half of similar days - the decisive band
+            "typical_high_touch": round(last_close * (1 + typ_high / 100), 2),
+            "typical_low_touch": round(last_close * (1 + typ_low / 100), 2),
+            # only 1 day in 4 goes beyond these - the outer band
             "likely_high_touch": round(last_close * (1 + high_pct / 100), 2),
             "likely_low_touch": round(last_close * (1 + low_pct / 100), 2),
         },
@@ -163,6 +189,8 @@ def _store(prediction: Prediction) -> None:
         )},
         "last_close": record["price"]["last_close"],
         "expected_close": record["price"]["expected_close"],
+        "typical_high_touch": record["price"]["typical_high_touch"],
+        "typical_low_touch": record["price"]["typical_low_touch"],
         "likely_high_touch": record["price"]["likely_high_touch"],
         "likely_low_touch": record["price"]["likely_low_touch"],
         "confidence_score": record["confidence"]["score"],

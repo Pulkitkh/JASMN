@@ -40,8 +40,10 @@ def build_market_summary(predictions: list[Prediction]) -> dict:
     ]
     df = pd.DataFrame(rows)
 
-    # Confidence-weighted breadth: +1 fully-confident UP, -1 fully-confident DOWN.
-    signed = np.where(df["direction"] == "UP", 1, -1) * df["confidence"] / 100
+    # Confidence-weighted breadth: +1 fully-confident UP, -1 fully-confident
+    # DOWN; NEUTRAL (conflicting signals) contributes nothing.
+    sign = df["direction"].map({"UP": 1, "DOWN": -1}).fillna(0)
+    signed = sign * df["confidence"] / 100
     breadth = float(signed.mean())
     bias = "BULLISH" if breadth > 0.15 else "BEARISH" if breadth < -0.15 else "NEUTRAL"
 
@@ -77,6 +79,7 @@ def build_market_summary(predictions: list[Prediction]) -> dict:
         "breadth_score": round(breadth, 3),
         "n_up": int((df["direction"] == "UP").sum()),
         "n_down": int((df["direction"] == "DOWN").sum()),
+        "n_neutral": int((df["direction"] == "NEUTRAL").sum()),
         "avg_confidence": round(float(df["confidence"].mean()), 1),
         "market_context": _market_context(),
         "sectors": sectors,
