@@ -18,10 +18,23 @@ def test_prediction_price_targets(trained_pipeline):
 
     pred = predict("TCS", config=trained_pipeline["config"])
     price = pred.price
-    assert set(price) == {"last_close", "expected_close", "likely_high_touch", "likely_low_touch"}
-    assert price["likely_low_touch"] <= price["expected_close"] <= price["likely_high_touch"]
+    assert set(price) == {
+        "last_close", "expected_close",
+        "typical_high_touch", "typical_low_touch",
+        "likely_high_touch", "likely_low_touch",
+    }
+    # Bands nest: typical inside likely, expected close inside typical.
+    assert price["likely_low_touch"] <= price["typical_low_touch"]
+    assert price["typical_low_touch"] <= price["expected_close"] <= price["typical_high_touch"]
+    assert price["typical_high_touch"] <= price["likely_high_touch"]
     assert price["likely_low_touch"] <= price["last_close"] <= price["likely_high_touch"]
     assert price["last_close"] > 0
+
+
+def test_range_coverage_metrics(trained_pipeline):
+    metrics = trained_pipeline["training"]
+    assert 0.0 <= metrics["high_touch_coverage"] <= 1.0
+    assert 0.0 <= metrics["low_touch_coverage"] <= 1.0
 
 
 def test_training_reports_range_metrics(trained_pipeline):

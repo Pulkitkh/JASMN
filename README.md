@@ -39,7 +39,7 @@ jasmin cycle --offline      # same pipeline on synthetic data (no network needed
 
 `jasmin analyze <name or ticker>` (or `GET /analyze?q=...`) takes free text — `"tata steel"`, `"INFY"`, `"asian paints"` — resolves it to an NSE listing, and analyzes it against the market. Stocks in the trained universe use their master-dataset features; anything else is built live on the spot: 2 years of the stock's prices and its current fundamentals are fetched, merged with the same market context (macro, FII/DII flows, news), and scored by the trained model. This works because every feature is symbol-relative (returns, ratios, relative strength) rather than absolute.
 
-The answer includes **price targets** from dedicated quantile range models trained on how far stocks actually travel in a session:
+The answer includes **price targets** from dedicated quantile range models trained on how far stocks actually travel in a session. Two nested bands: the *typical* band (median — touched on about half of similar days) and the *likely* band (75th/25th percentile — only one day in four goes beyond it). Band calibration is measured on validation and reported in the training metrics as `high/low_touch_coverage`:
 
 ```json
 {
@@ -49,6 +49,8 @@ The answer includes **price targets** from dedicated quantile range models train
   "price": {
     "last_close": 3450.10,
     "expected_close": 3460.80,
+    "typical_high_touch": 3478.20,
+    "typical_low_touch": 3430.50,
     "likely_high_touch": 3492.55,
     "likely_low_touch": 3421.30
   },

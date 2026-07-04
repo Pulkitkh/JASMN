@@ -18,6 +18,7 @@ from sklearn.ensemble import (
     GradientBoostingClassifier,
     GradientBoostingRegressor,
     HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
     RandomForestClassifier,
 )
 from sklearn.metrics import accuracy_score, mean_absolute_error, roc_auc_score
@@ -117,27 +118,38 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
     regressor.fit(X_tr, train["target_move_pct"])
     mae = mean_absolute_error(valid["target_move_pct"], regressor.predict(X_va))
 
-    # Range models: how far up/down the stock is likely to touch over the
-    # horizon. Quantile loss gives "likely extreme" rather than the mean,
-    # which is what a realistic touch estimate needs.
-    high_regressor = GradientBoostingRegressor(
-        loss="quantile", alpha=0.75, n_estimators=200, max_depth=3,
-        learning_rate=0.05, random_state=config.seed,
-    )
-    low_regressor = GradientBoostingRegressor(
-        loss="quantile", alpha=0.25, n_estimators=200, max_depth=3,
-        learning_rate=0.05, random_state=config.seed,
-    )
+    # Range models: how far up/down the stock travels over the horizon.
+    # Histogram gradient boosting conditions the width on the stock's own
+    # volatility features far better than shallow classic GB. Two bands:
+    #   typical (median): touched on ~half of similar days - the tight band
+    #   likely (75th/25th): only 1 day in 4 goes beyond - the outer band
+    def _quantile_model(q: float) -> HistGradientBoostingRegressor:
+        return HistGradientBoostingRegressor(
+            loss="quantile", quantile=q, max_iter=300, max_depth=4,
+            learning_rate=0.05, l2_regularization=1.0, early_stopping=True,
+            validation_fraction=0.1, random_state=config.seed,
+        )
+
+    range_models = {
+        "high": _quantile_model(0.75),
+        "low": _quantile_model(0.25),
+        "typical_high": _quantile_model(0.50),
+        "typical_low": _quantile_model(0.50),
+    }
     range_train = train.dropna(subset=["target_high_pct", "target_low_pct"])
-    high_regressor.fit(range_train[features], range_train["target_high_pct"])
-    low_regressor.fit(range_train[features], range_train["target_low_pct"])
     range_valid = valid.dropna(subset=["target_high_pct", "target_low_pct"])
-    high_mae = mean_absolute_error(
-        range_valid["target_high_pct"], high_regressor.predict(range_valid[features])
-    )
-    low_mae = mean_absolute_error(
-        range_valid["target_low_pct"], low_regressor.predict(range_valid[features])
-    )
+    for name, model in range_models.items():
+        target = "target_high_pct" if "high" in name else "target_low_pct"
+        model.fit(range_train[features], range_train[target])
+
+    hp = range_models["high"].predict(range_valid[features])
+    lp = range_models["low"].predict(range_valid[features])
+    high_mae = mean_absolute_error(range_valid["target_high_pct"], hp)
+    low_mae = mean_absolute_error(range_valid["target_low_pct"], lp)
+    # Calibration check: fraction of actual touches inside each bound
+    # (nominal 75% each side); logged with the metrics so drift is visible.
+    high_coverage = float((range_valid["target_high_pct"] <= hp).mean())
+    low_coverage = float((range_valid["target_low_pct"] >= lp).mean())
 
     metrics = {
         "ensemble_accuracy": round(float(ensemble_acc), 4),
@@ -145,6 +157,8 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
         "move_mae_pct": round(float(mae), 4),
         "high_touch_mae_pct": round(float(high_mae), 4),
         "low_touch_mae_pct": round(float(low_mae), 4),
+        "high_touch_coverage": round(high_coverage, 4),
+        "low_touch_coverage": round(low_coverage, 4),
         "per_model_accuracy": per_model_acc,
         "n_train": len(train),
         "n_valid": len(valid),
@@ -199,8 +213,10 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
     bundle = {
         "classifiers": classifiers,
         "regressor": regressor,
-        "high_regressor": high_regressor,
-        "low_regressor": low_regressor,
+        "high_regressor": range_models["high"],
+        "low_regressor": range_models["low"],
+        "typical_high_regressor": range_models["typical_high"],
+        "typical_low_regressor": range_models["typical_low"],
         "features": features,
         "feature_stats": feature_stats,
         "regime_accuracy": regime_accuracy,
