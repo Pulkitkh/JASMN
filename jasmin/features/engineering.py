@@ -98,7 +98,15 @@ def _is_expiry_week(dates: pd.Series) -> pd.Series:
 def _aggregate_news(news: pd.DataFrame) -> pd.DataFrame:
     """Collapse per-headline rows into per-symbol daily sentiment metrics."""
     if news.empty:
-        return pd.DataFrame(columns=["date", "symbol", "daily_sentiment", "news_count", "earnings_flag"])
+        return pd.DataFrame(
+            {
+                "date": pd.Series(dtype="datetime64[ns]"),
+                "symbol": pd.Series(dtype=object),
+                "daily_sentiment": pd.Series(dtype=float),
+                "news_count": pd.Series(dtype=float),
+                "earnings_flag": pd.Series(dtype=float),
+            }
+        )
     daily = (
         news.groupby(["date", "symbol"])
         .agg(
@@ -119,6 +127,22 @@ def build_feature_frame(
     news: pd.DataFrame,
 ) -> pd.DataFrame:
     """Merge all cleaned domains and compute the model feature matrix."""
+    # Bookkeeping columns (collection metadata) must not enter the merges,
+    # and merge_asof requires identical datetime resolution on every key.
+    _meta = ["collected_at", "source"]
+
+    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.drop(columns=_meta, errors="ignore")
+        if "date" in df.columns:
+            df = df.assign(date=pd.to_datetime(df["date"]).astype("datetime64[ns]"))
+        return df
+
+    prices = _prep(prices)
+    fundamentals = _prep(fundamentals)
+    macro = _prep(macro)
+    institutional = _prep(institutional)
+    news = _prep(news)
+
     news_daily = _aggregate_news(news)
     macro = macro.sort_values("date")
 

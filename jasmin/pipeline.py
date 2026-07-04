@@ -47,3 +47,32 @@ def run_cycle(config: PipelineConfig | None = None, days: int = 400,
         except (ValueError, KeyError) as exc:
             log.warning("prediction skipped for %s: %s", symbol, exc)
     return {"training": training, "predictions": predictions}
+
+
+def run_premarket(config: PipelineConfig | None = None, days: int = 400,
+                  retrain: bool = True, offline: bool = False) -> dict:
+    """Pre-market routine: refresh live data and have predictions with an
+    aggregated market summary ready before the 09:15 IST open."""
+    from jasmin.prediction.summary import build_market_summary
+    from jasmin.utils.market_calendar import market_status
+
+    config = config or PipelineConfig()
+    status = market_status()
+    log.info("pre-market run | %s", status)
+
+    run_collectors(config, days=days, offline=offline)
+    build_master_dataset(config)
+    training = train_models(config) if retrain else None
+
+    predictions = []
+    for symbol in config.universe:
+        try:
+            predictions.append(predict(symbol, config=config))
+        except (ValueError, KeyError) as exc:
+            log.warning("prediction skipped for %s: %s", symbol, exc)
+
+    return {
+        "market_status": status,
+        "training": training,
+        "summary": build_market_summary(predictions),
+    }

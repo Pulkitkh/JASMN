@@ -23,22 +23,65 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 
 ALL_DIRS = [RAW_DIR, CLEAN_DIR, FEATURES_DIR, MASTER_DIR, MODELS_DIR, LOGS_DIR]
 
-# Default NSE universe used for demos and tests. Extend freely; every
-# pipeline stage takes an explicit symbol list, so nothing hardcodes this.
+# Training universe: liquid NIFTY large-caps across sectors. A broad,
+# diverse universe is what lets the model generalize to stocks a user asks
+# about that were never trained on — features are symbol-relative
+# (returns, z-scores, sector-relative strength), not absolute prices.
 DEFAULT_UNIVERSE = [
-    "RELIANCE",
-    "TCS",
-    "HDFCBANK",
-    "INFY",
-    "ICICIBANK",
+    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+    "HINDUNILVR", "ITC", "SBIN", "BHARTIARTL", "KOTAKBANK",
+    "LT", "AXISBANK", "ASIANPAINT", "MARUTI", "SUNPHARMA",
+    "TITAN", "ULTRACEMCO", "WIPRO", "HCLTECH", "NTPC",
+    "POWERGRID", "TATASTEEL", "BAJFINANCE", "ADANIENT", "TECHM",
 ]
 
 SECTOR_MAP = {
-    "RELIANCE": "ENERGY",
-    "TCS": "IT",
-    "INFY": "IT",
-    "HDFCBANK": "BANKING",
-    "ICICIBANK": "BANKING",
+    "RELIANCE": "ENERGY", "ADANIENT": "ENERGY", "NTPC": "POWER",
+    "POWERGRID": "POWER",
+    "TCS": "IT", "INFY": "IT", "WIPRO": "IT", "HCLTECH": "IT", "TECHM": "IT",
+    "HDFCBANK": "BANKING", "ICICIBANK": "BANKING", "SBIN": "BANKING",
+    "KOTAKBANK": "BANKING", "AXISBANK": "BANKING", "BAJFINANCE": "FINANCE",
+    "HINDUNILVR": "FMCG", "ITC": "FMCG", "ASIANPAINT": "CONSUMER",
+    "TITAN": "CONSUMER", "MARUTI": "AUTO",
+    "LT": "INFRA", "ULTRACEMCO": "CEMENT", "TATASTEEL": "METALS",
+    "SUNPHARMA": "PHARMA", "BHARTIARTL": "TELECOM",
+}
+
+# Aliases used to match news headlines to universe symbols (lowercase).
+COMPANY_ALIASES = {
+    "RELIANCE": ["reliance", "ril", "reliance industries", "ambani"],
+    "TCS": ["tcs", "tata consultancy"],
+    "INFY": ["infosys", "infy"],
+    "HDFCBANK": ["hdfc bank", "hdfcbank"],
+    "ICICIBANK": ["icici bank", "icicibank"],
+    "HINDUNILVR": ["hindustan unilever", "hul"],
+    "ITC": ["itc"],
+    "SBIN": ["sbi", "state bank"],
+    "BHARTIARTL": ["airtel", "bharti"],
+    "KOTAKBANK": ["kotak"],
+    "LT": ["larsen", "l&t"],
+    "AXISBANK": ["axis bank"],
+    "ASIANPAINT": ["asian paints"],
+    "MARUTI": ["maruti", "suzuki"],
+    "SUNPHARMA": ["sun pharma"],
+    "TITAN": ["titan"],
+    "ULTRACEMCO": ["ultratech"],
+    "WIPRO": ["wipro"],
+    "HCLTECH": ["hcl tech", "hcltech", "hcl technologies"],
+    "NTPC": ["ntpc"],
+    "POWERGRID": ["power grid", "powergrid"],
+    "TATASTEEL": ["tata steel"],
+    "BAJFINANCE": ["bajaj finance"],
+    "ADANIENT": ["adani enterprises", "adani ent"],
+    "TECHM": ["tech mahindra"],
+}
+
+# Slow-moving policy variables that have no reliable free API. Update these
+# when RBI/MoSPI publish new numbers, or override via data/config/macro.json.
+POLICY_MACRO_DEFAULTS = {
+    "repo_rate": 5.5,        # RBI repo rate
+    "cpi_inflation": 2.1,    # CPI YoY %
+    "bond_yield_10y": 6.3,   # 10Y G-Sec yield %
 }
 
 

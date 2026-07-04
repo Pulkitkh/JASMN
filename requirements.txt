@@ -4,9 +4,8 @@ scikit-learn>=1.3
 fastapi>=0.100
 uvicorn>=0.23
 
-# Optional live-data extras (the system falls back to offline/synthetic mode without them):
-# yfinance>=0.2        # live OHLCV prices
-# feedparser>=6.0      # RSS news ingestion
+# Live market data (Yahoo Finance, NSE, RSS) uses only the standard library —
+# no extra dependencies. Optional upgrade:
 # transformers, torch  # FinBERT sentiment (lexicon scorer used by default)
 
 # Development

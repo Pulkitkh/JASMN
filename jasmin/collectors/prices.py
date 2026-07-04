@@ -74,33 +74,19 @@ class PriceCollector(BaseCollector):
 
     def _fetch_live(self, symbols: list[str], days: int) -> pd.DataFrame | None:
         try:
-            import yfinance as yf  # optional dependency
-        except ImportError:
-            self.log.info("yfinance not installed; using synthetic prices")
-            return None
-        try:
+            from jasmin.live.yahoo import YahooClient
+
+            yahoo = YahooClient()
             frames = []
             for sym in symbols:
-                hist = yf.Ticker(f"{sym}.NS").history(period=f"{days}d", auto_adjust=False)
-                if hist.empty:
-                    raise ValueError(f"empty history for {sym}")
-                hist = hist.reset_index()
-                frames.append(
-                    pd.DataFrame(
-                        {
-                            "date": pd.to_datetime(hist["Date"]).dt.tz_localize(None),
-                            "symbol": sym,
-                            "open": hist["Open"],
-                            "high": hist["High"],
-                            "low": hist["Low"],
-                            "close": hist["Close"],
-                            "adj_close": hist.get("Adj Close", hist["Close"]),
-                            "volume": hist["Volume"],
-                            "delivery_pct": float("nan"),  # not exposed by yfinance
-                        }
-                    )
-                )
-            return pd.concat(frames, ignore_index=True)
+                hist = yahoo.daily_history(sym, days)
+                hist.insert(1, "symbol", sym)
+                hist["delivery_pct"] = float("nan")  # not exposed by Yahoo
+                frames.append(hist)
+            df = pd.concat(frames, ignore_index=True)
+            df["source"] = "yahoo"
+            self.log.info("live prices: %d rows for %d symbols", len(df), len(symbols))
+            return df
         except Exception as exc:  # network/source failure -> synthetic fallback
             self.log.warning("live price fetch failed (%s); using synthetic prices", exc)
             return None

@@ -4,6 +4,12 @@ Tracks FII/DII net flows (market-wide, in crores), plus per-symbol bulk/block
 deal counts and promoter pledge levels. The premise from the design document:
 informed capital often precedes visible price movement, so these become
 leading features downstream.
+
+Live mode overlays real FII/DII flows from the official NSE API onto the
+series. NSE only serves the latest session, so each fetch is appended to a
+persistent log — real coverage grows day by day while the synthetic series
+backfills dates from before the log started. Per-symbol deal/pledge data
+stays synthetic until a bulk-deals source is integrated.
 """
 
 from __future__ import annotations
@@ -19,6 +25,31 @@ class InstitutionalCollector(BaseCollector):
     name = "institutional"
 
     def fetch(self, symbols: list[str], days: int) -> pd.DataFrame:
+        df = self._fetch_synthetic(symbols, days)
+        if not self.offline:
+            df = self._overlay_live(df)
+        return df
+
+    def _overlay_live(self, df: pd.DataFrame) -> pd.DataFrame:
+        try:
+            from jasmin.live.nse import fetch_fii_dii
+
+            real = fetch_fii_dii().set_index("date")
+            df = df.set_index("date")
+            for col in ("fii_net_cr", "dii_net_cr"):
+                if col in real.columns:
+                    overlap = df.index.intersection(real.index)
+                    df.loc[overlap, col] = real.loc[overlap, col]
+            df["source"] = "synthetic+nse"
+            self.log.info(
+                "overlaid %d real FII/DII sessions from NSE log", len(real)
+            )
+            return df.reset_index()
+        except Exception as exc:
+            self.log.warning("NSE FII/DII fetch failed (%s); synthetic flows only", exc)
+            return df
+
+    def _fetch_synthetic(self, symbols: list[str], days: int) -> pd.DataFrame:
         dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=days)
         rng_mkt = np.random.default_rng(9001)
         n = len(dates)

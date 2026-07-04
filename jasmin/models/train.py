@@ -34,8 +34,12 @@ def _prepare(master: pd.DataFrame, config: PipelineConfig):
     labeled = master.dropna(subset=["target_up"]).copy()
     # Drop the warm-up window where long indicators are still NaN.
     features = [c for c in FEATURE_COLUMNS if c in labeled.columns]
-    labeled = labeled.dropna(subset=features, thresh=int(len(features) * 0.9))
+    labeled = labeled.dropna(subset=features, thresh=int(len(features) * 0.7))
     labeled[features] = labeled[features].fillna(labeled[features].median(numeric_only=True))
+    # Columns that are entirely NaN (live sources that expose no history,
+    # e.g. earnings surprises) have no median either — neutral-fill so the
+    # sklearn ensembles never see NaN.
+    labeled[features] = labeled[features].fillna(0.0)
 
     # Flat moves teach the classifier nothing about direction.
     directional = labeled[labeled["target_move_pct"].abs() >= config.flat_threshold_pct]
@@ -92,10 +96,34 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
     regressor.fit(X_tr, train["target_move_pct"])
     mae = mean_absolute_error(valid["target_move_pct"], regressor.predict(X_va))
 
+    # Range models: how far up/down the stock is likely to touch over the
+    # horizon. Quantile loss gives "likely extreme" rather than the mean,
+    # which is what a realistic touch estimate needs.
+    high_regressor = GradientBoostingRegressor(
+        loss="quantile", alpha=0.75, n_estimators=200, max_depth=3,
+        learning_rate=0.05, random_state=config.seed,
+    )
+    low_regressor = GradientBoostingRegressor(
+        loss="quantile", alpha=0.25, n_estimators=200, max_depth=3,
+        learning_rate=0.05, random_state=config.seed,
+    )
+    range_train = train.dropna(subset=["target_high_pct", "target_low_pct"])
+    high_regressor.fit(range_train[features], range_train["target_high_pct"])
+    low_regressor.fit(range_train[features], range_train["target_low_pct"])
+    range_valid = valid.dropna(subset=["target_high_pct", "target_low_pct"])
+    high_mae = mean_absolute_error(
+        range_valid["target_high_pct"], high_regressor.predict(range_valid[features])
+    )
+    low_mae = mean_absolute_error(
+        range_valid["target_low_pct"], low_regressor.predict(range_valid[features])
+    )
+
     metrics = {
         "ensemble_accuracy": round(float(ensemble_acc), 4),
         "roc_auc": round(float(auc), 4),
         "move_mae_pct": round(float(mae), 4),
+        "high_touch_mae_pct": round(float(high_mae), 4),
+        "low_touch_mae_pct": round(float(low_mae), 4),
         "per_model_accuracy": per_model_acc,
         "n_train": len(train),
         "n_valid": len(valid),
@@ -133,6 +161,8 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
     bundle = {
         "classifiers": classifiers,
         "regressor": regressor,
+        "high_regressor": high_regressor,
+        "low_regressor": low_regressor,
         "features": features,
         "feature_stats": feature_stats,
         "metrics": metrics,
