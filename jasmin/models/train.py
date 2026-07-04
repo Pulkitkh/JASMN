@@ -17,6 +17,7 @@ import pandas as pd
 from sklearn.ensemble import (
     GradientBoostingClassifier,
     GradientBoostingRegressor,
+    HistGradientBoostingClassifier,
     RandomForestClassifier,
 )
 from sklearn.metrics import accuracy_score, mean_absolute_error, roc_auc_score
@@ -28,6 +29,20 @@ from jasmin.models.registry import ModelRegistry
 from jasmin.utils.logging import get_logger
 
 log = get_logger("train")
+
+
+def regime_key(vix: float, nifty_5d: float) -> str:
+    """Bucket market conditions: VIX level x short-term index trend.
+
+    Used for conditional accuracy — "how good has the model been in
+    conditions like today's?" (design doc §16: historical accuracy on
+    similar conditions).
+    """
+    if pd.isna(vix):
+        vix = 18.0
+    vol = "calm" if vix < 14 else ("elevated" if vix < 22 else "stressed")
+    trend = "up" if (not pd.isna(nifty_5d) and nifty_5d >= 0) else "down"
+    return f"{vol}_{trend}"
 
 
 def _prepare(master: pd.DataFrame, config: PipelineConfig):
@@ -70,11 +85,17 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
 
     classifiers = {
         "gradient_boosting": GradientBoostingClassifier(
-            n_estimators=200, max_depth=3, learning_rate=0.05, random_state=config.seed
+            n_estimators=200, max_depth=3, learning_rate=0.05,
+            subsample=0.8, random_state=config.seed,
         ),
         "random_forest": RandomForestClassifier(
-            n_estimators=300, max_depth=6, min_samples_leaf=10,
-            random_state=config.seed, n_jobs=-1
+            n_estimators=400, max_depth=8, min_samples_leaf=20,
+            max_features="sqrt", random_state=config.seed, n_jobs=-1,
+        ),
+        "hist_gradient_boosting": HistGradientBoostingClassifier(
+            max_iter=400, max_depth=4, learning_rate=0.05,
+            l2_regularization=1.0, early_stopping=True,
+            validation_fraction=0.1, random_state=config.seed,
         ),
     }
     per_model_acc = {}
@@ -131,6 +152,23 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
         "valid_to": str(valid["date"].max().date()),
     }
 
+    # Conditional accuracy per market regime on the validation window: at
+    # prediction time, confidence uses the accuracy for today's regime
+    # rather than the global average (falls back when a bucket is thin).
+    regime_df = pd.DataFrame(
+        {
+            "regime": [
+                regime_key(v, n)
+                for v, n in zip(valid["india_vix"], valid["nifty_return_5d"])
+            ],
+            "correct": (proba_va > 0.5).astype(int) == y_va.to_numpy().astype(int),
+        }
+    )
+    regime_accuracy = {
+        regime: {"accuracy": round(float(grp["correct"].mean()), 4), "n": int(len(grp))}
+        for regime, grp in regime_df.groupby("regime")
+    }
+
     # Feature stats from training data feed the explanation engine (z-scores).
     feature_stats = {
         "mean": X_tr.mean().to_dict(),
@@ -165,6 +203,7 @@ def train_models(config: PipelineConfig | None = None, registry: ModelRegistry |
         "low_regressor": low_regressor,
         "features": features,
         "feature_stats": feature_stats,
+        "regime_accuracy": regime_accuracy,
         "metrics": metrics,
         "config": {"horizon_days": config.horizon_days},
     }

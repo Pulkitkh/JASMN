@@ -23,9 +23,11 @@ from jasmin.utils.logging import get_logger
 log = get_logger("pipeline")
 
 
-def run_collectors(config: PipelineConfig, days: int = 400, offline: bool = False) -> None:
+def run_collectors(config: PipelineConfig, days: int | None = None,
+                   offline: bool = False) -> None:
     """Stage 1: run every collector independently."""
     ensure_dirs()
+    days = days or config.history_days
     for collector_cls in (
         PriceCollector, FundamentalsCollector, MacroCollector,
         InstitutionalCollector, NewsCollector,
@@ -33,7 +35,7 @@ def run_collectors(config: PipelineConfig, days: int = 400, offline: bool = Fals
         collector_cls(offline=offline).collect(config.universe, days=days)
 
 
-def run_cycle(config: PipelineConfig | None = None, days: int = 400,
+def run_cycle(config: PipelineConfig | None = None, days: int | None = None,
               offline: bool = False) -> dict:
     """One full continuous-learning cycle."""
     config = config or PipelineConfig()
@@ -49,7 +51,7 @@ def run_cycle(config: PipelineConfig | None = None, days: int = 400,
     return {"training": training, "predictions": predictions}
 
 
-def run_premarket(config: PipelineConfig | None = None, days: int = 400,
+def run_premarket(config: PipelineConfig | None = None, days: int | None = None,
                   retrain: bool = True, offline: bool = False) -> dict:
     """Pre-market routine: refresh live data and have predictions with an
     aggregated market summary ready before the 09:15 IST open."""

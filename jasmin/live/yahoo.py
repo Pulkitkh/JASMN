@@ -41,7 +41,16 @@ class YahooClient:
 
     def daily_history(self, symbol: str, days: int) -> pd.DataFrame:
         """Daily OHLCV for one ticker as a tidy frame (date ascending)."""
-        rng = "2y" if days > 250 else ("1y" if days > 120 else "6mo")
+        if days > 2600:
+            rng = "max"
+        elif days > 1300:
+            rng = "10y"
+        elif days > 600:
+            rng = "5y"
+        elif days > 250:
+            rng = "2y"
+        else:
+            rng = "1y" if days > 120 else "6mo"
         url = _CHART.format(symbol=urllib.parse.quote(nse_ticker(symbol)), range=rng)
         data = self._cached_get_json(url, f"chart_{nse_ticker(symbol)}_{rng}")
         result = data["chart"]["result"][0]

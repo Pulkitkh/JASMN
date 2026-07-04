@@ -19,10 +19,21 @@ from jasmin.collectors.base import BaseCollector
 from jasmin.config import DATA_DIR, POLICY_MACRO_DEFAULTS
 
 _LIVE_TICKERS = {
+    # India
     "nifty_index": "^NSEI",
     "india_vix": "^INDIAVIX",
+    "banknifty_index": "^NSEBANK",
     "usdinr": "INR=X",
+    # Global cues: US bars complete at ~02:00 IST, hours BEFORE the next
+    # NSE open — so "same-date" values are legitimately available at
+    # pre-market prediction time, with no lookahead.
     "crude_usd": "BZ=F",
+    "gold_usd": "GC=F",
+    "sp500": "^GSPC",
+    "nasdaq": "^IXIC",
+    "nikkei": "^N225",
+    "us_10y_yield": "^TNX",
+    "dollar_index": "DX-Y.NYB",
 }
 
 
@@ -93,5 +104,12 @@ class MacroCollector(BaseCollector):
                 "bond_yield_10y": np.clip(walk(7.0, 0.004), 5.5, 8.5).round(3),
                 "india_vix": np.clip(walk(13.5, 0.03), 8, 40).round(2),
                 "nifty_index": walk(24_000.0, 0.008, drift=0.0003).round(1),
+                "banknifty_index": walk(52_000.0, 0.009, drift=0.0003).round(1),
+                "gold_usd": walk(2400.0, 0.007).round(1),
+                "sp500": walk(5600.0, 0.008, drift=0.0004).round(1),
+                "nasdaq": walk(18_000.0, 0.011, drift=0.0004).round(1),
+                "nikkei": walk(39_000.0, 0.009).round(1),
+                "us_10y_yield": np.clip(walk(4.3, 0.008), 2.5, 6.0).round(3),
+                "dollar_index": np.clip(walk(105.0, 0.003), 90, 120).round(2),
             }
         )

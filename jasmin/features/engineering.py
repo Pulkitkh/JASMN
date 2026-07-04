@@ -37,12 +37,15 @@ FEATURE_DESCRIPTIONS = {
     "return_1d": "1-day return",
     "return_5d": "5-day return",
     "return_20d": "20-day return",
+    "return_60d": "60-day momentum",
     "gap_pct": "opening gap",
     "volatility_20d": "20-day realized volatility",
+    "vol_ratio_5_60": "short-term vs long-term volatility",
     "volume_ratio_20d": "volume vs 20-day average (unusual volume)",
     "return_lag_1": "previous day's return",
     "return_lag_2": "return two days ago",
     "dist_from_high_20d": "distance below 20-day high",
+    "dist_from_high_52w": "distance below 52-week high",
     # relative strength
     "rel_strength_index_20d": "20-day relative strength vs NIFTY",
     "rel_strength_sector_20d": "20-day return vs own sector",
@@ -66,6 +69,15 @@ FEATURE_DESCRIPTIONS = {
     "india_vix": "India VIX (market fear)",
     "bond_yield_10y": "10-year bond yield",
     "nifty_return_5d": "5-day NIFTY return",
+    "banknifty_return_5d": "5-day Bank Nifty return",
+    # global overnight cues (US/Asia bars complete before the NSE open)
+    "sp500_return_1d": "overnight S&P 500 move",
+    "sp500_return_5d": "5-day S&P 500 trend",
+    "nasdaq_return_1d": "overnight Nasdaq move",
+    "nikkei_return_1d": "Nikkei momentum",
+    "gold_return_5d": "5-day gold move (risk appetite)",
+    "dollar_index_return_5d": "5-day dollar index move",
+    "us_10y_delta_5d": "5-day US yield change",
     # institutional
     "fii_net_5d": "5-day cumulative FII flows",
     "dii_net_5d": "5-day cumulative DII flows",
@@ -143,6 +155,12 @@ def build_feature_frame(
     institutional = _prep(institutional)
     news = _prep(news)
 
+    # Tolerate macro files collected before newer series were added.
+    for col in ("banknifty_index", "gold_usd", "sp500", "nasdaq", "nikkei",
+                "us_10y_yield", "dollar_index"):
+        if col not in macro.columns:
+            macro[col] = np.nan
+
     news_daily = _aggregate_news(news)
     macro = macro.sort_values("date")
 
@@ -152,10 +170,16 @@ def build_feature_frame(
 
         # --- price-derived features ---
         grp["volatility_20d"] = grp["return_1d"].rolling(20).std() * np.sqrt(252)
+        grp["vol_ratio_5_60"] = (
+            grp["return_1d"].rolling(5).std()
+            / grp["return_1d"].rolling(60).std().replace(0, np.nan)
+        )
         grp["volume_ratio_20d"] = grp["volume"] / grp["volume"].rolling(20).mean().replace(0, np.nan)
         grp["return_lag_1"] = grp["return_1d"].shift(1)
         grp["return_lag_2"] = grp["return_1d"].shift(2)
+        grp["return_60d"] = grp["close"].pct_change(60)
         grp["dist_from_high_20d"] = grp["close"] / grp["high"].rolling(20).max() - 1
+        grp["dist_from_high_52w"] = grp["close"] / grp["high"].rolling(252, min_periods=60).max() - 1
         grp["atr_pct"] = grp["atr_14"] / grp["close"]
 
         # --- fundamentals: as-of merge of the latest quarterly snapshot ---
@@ -179,6 +203,14 @@ def build_feature_frame(
         grp["usdinr_return_5d"] = grp["usdinr"].pct_change(5)
         grp["crude_return_5d"] = grp["crude_usd"].pct_change(5)
         grp["nifty_return_5d"] = grp["nifty_index"].pct_change(5)
+        grp["banknifty_return_5d"] = grp["banknifty_index"].pct_change(5)
+        grp["sp500_return_1d"] = grp["sp500"].pct_change()
+        grp["sp500_return_5d"] = grp["sp500"].pct_change(5)
+        grp["nasdaq_return_1d"] = grp["nasdaq"].pct_change()
+        grp["nikkei_return_1d"] = grp["nikkei"].pct_change()
+        grp["gold_return_5d"] = grp["gold_usd"].pct_change(5)
+        grp["dollar_index_return_5d"] = grp["dollar_index"].pct_change(5)
+        grp["us_10y_delta_5d"] = grp["us_10y_yield"].diff(5)
 
         # --- relative strength vs index ---
         grp["rel_strength_index_20d"] = (

@@ -24,7 +24,13 @@ _INVERTED = {"debt_equity", "pe", "india_vix", "promoter_pledge_pct", "atr_pct",
 
 
 def _ensemble_importance(classifiers: dict) -> pd.Series:
-    imps = [pd.Series(c.feature_importances_, index=c.feature_names_in_) for c in classifiers.values()]
+    # Not every member exposes importances (HistGradientBoosting doesn't);
+    # average over those that do.
+    imps = [
+        pd.Series(c.feature_importances_, index=c.feature_names_in_)
+        for c in classifiers.values()
+        if hasattr(c, "feature_importances_")
+    ]
     return pd.concat(imps, axis=1).mean(axis=1)
 
 

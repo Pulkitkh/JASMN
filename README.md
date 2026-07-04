@@ -21,7 +21,7 @@ Every stage is an independent module — any collector, feature generator or mod
 | `jasmin/cleaning/` | Dedupe, normalization, gap filling, outlier winsorization, derived returns/gaps. |
 | `jasmin/features/` | 20+ technical indicators (RSI, MACD, ADX, Bollinger, Ichimoku, VWAP, OBV, …) plus engineered features: relative strength, weighted sentiment windows, macro deltas, FII flow trends, expiry-week seasonality, interaction terms. |
 | `jasmin/dataset/` | Builds the labeled master dataset (direction + expected % move over the horizon). |
-| `jasmin/models/` | Gradient-boosting + random-forest ensemble (direction) and a regressor (expected move), with a versioned registry, auto-approval gates and rollback. |
+| `jasmin/models/` | Three-member ensemble (gradient boosting, random forest, histogram gradient boosting) for direction, regressors for expected move and the likely high/low touch range, per-regime validation accuracy, and a versioned registry with auto-approval gates and rollback. |
 | `jasmin/prediction/` | Inference pipeline: completeness validation → ensemble probability → expected move → ranked factor explanation → confidence score. |
 | `jasmin/api/` | FastAPI service exposing predictions, the audit log and the model registry. |
 | `jasmin/scheduler/` | Continuous-learning daemons: fixed-interval, plus a market-aware live daemon keyed to the NSE calendar. |
@@ -115,7 +115,7 @@ Each training run registers a new version under `models/store/`. A candidate is 
 
 ## Confidence score
 
-Confidence (0–100) blends probability strength, agreement among ensemble members, feature completeness, data freshness, the model's validation accuracy, and the current volatility regime (India VIX). Low-confidence output means "the data doesn't support conviction," which is itself information.
+Confidence (0–100) blends probability strength, agreement among ensemble members, feature completeness, data freshness, the model's validation accuracy, and the current volatility regime (India VIX). The accuracy component is **conditional**: validation accuracy is bucketed by market regime (VIX level × short-term index trend), and each prediction is judged by how the model has performed in conditions like today's — falling back to the global average when a bucket is thin. Low-confidence output means "the data doesn't support conviction," which is itself information.
 
 ## Live vs offline data
 
@@ -123,9 +123,9 @@ Live mode is the default and needs no API keys — all sources are free and fetc
 
 | Domain | Live source | Notes |
 |---|---|---|
-| Prices (OHLCV) | Yahoo Finance chart API | 2-year daily history per symbol |
+| Prices (OHLCV) | Yahoo Finance chart API | 10-year daily history for the full NIFTY 50 universe |
 | Fundamentals | Yahoo quoteSummary | current snapshot (PE, ROE, margins, holdings, mcap) treated as constant over history |
-| Macro | Yahoo (NIFTY, India VIX, USD/INR, Brent) + configured policy rates | update repo rate/CPI in `data/config/macro.json` when RBI/MoSPI publish |
+| Macro & global cues | Yahoo (NIFTY, Bank Nifty, India VIX, USD/INR, Brent, gold, S&P 500, Nasdaq, Nikkei, US 10Y, dollar index) + configured policy rates | US/Asia bars complete before the NSE open, so overnight global moves are legitimate pre-market features; update repo rate/CPI in `data/config/macro.json` when RBI/MoSPI publish |
 | FII/DII flows | Official NSE API | latest session per fetch; a persistent log accumulates real history day by day |
 | News | Economic Times + LiveMint RSS | headlines matched to the universe via company aliases; persistent log accumulates |
 
