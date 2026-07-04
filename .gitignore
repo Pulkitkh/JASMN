@@ -7,6 +7,7 @@ venv/
 
 # Generated data & artifacts (keep directory structure via .gitkeep)
 data/raw/*
+data/cache/
 data/clean/*
 data/features/*
 data/master/*
