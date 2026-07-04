@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     p_predict = sub.add_parser("predict", help="predict one or more symbols")
     p_predict.add_argument("symbols", nargs="+")
 
+    p_analyze = sub.add_parser(
+        "analyze", help="analyze any stock by name or ticker (e.g. 'tata steel')"
+    )
+    p_analyze.add_argument("query", nargs="+", help="stock name or NSE ticker")
+
     p_cycle = sub.add_parser("cycle", help="run the full pipeline end to end")
     p_cycle.add_argument("--days", type=int, default=400)
     p_cycle.add_argument("--offline", action="store_true")
@@ -93,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
         from jasmin.prediction import predict
         for symbol in args.symbols:
             _print(predict(symbol.upper(), config=config).to_dict())
+    elif args.command == "analyze":
+        from jasmin.prediction.analyze import analyze
+        _print(analyze(" ".join(args.query), config=config))
     elif args.command == "cycle":
         from jasmin.pipeline import run_cycle
         result = run_cycle(config, days=args.days, offline=args.offline)

@@ -4,6 +4,7 @@ Endpoints:
   GET /health                     liveness + model status
   GET /universe                   configured symbols
   GET /predict/{symbol}           full prediction with explanation & confidence
+  GET /analyze?q={name or ticker} analyze ANY stock by free-text name/ticker
   GET /market-summary             aggregated view across the whole universe
   GET /market-status              NSE calendar status (IST)
   GET /predictions                recent prediction audit log
@@ -58,6 +59,20 @@ def predict_symbol(symbol: str) -> dict:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0]))
     except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/analyze")
+def analyze_stock(q: str) -> dict:
+    from jasmin.prediction.analyze import analyze
+
+    try:
+        return analyze(q, config=config, registry=registry)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except (ValueError, ConnectionError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 

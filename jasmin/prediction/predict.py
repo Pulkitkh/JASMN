@@ -1,9 +1,13 @@
 """Prediction pipeline (design doc §14) — end-to-end inference for one symbol.
 
 Steps: gather latest engineered features -> validate completeness -> load
-latest approved model -> infer probability & expected movement -> rank
-factors -> attach explanation and confidence. Results are appended to
-data/master/predictions.csv so accuracy can be audited later.
+latest approved model -> infer probability, expected movement and the
+likely price range -> rank factors -> attach explanation and confidence.
+Results are appended to data/master/predictions.csv for later auditing.
+
+`infer_row` is the shared core: `predict` feeds it the latest master-dataset
+row for a universe symbol, while `analyze` (on-demand flow) feeds it a
+feature row built live for any symbol the user asks about.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ class Prediction:
     direction: str
     probability_up: float
     expected_move_pct: float
+    price: dict
     confidence: dict
     explanation: dict
     model_version: str
@@ -46,8 +51,66 @@ class Prediction:
         return asdict(self)
 
 
+def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
+              as_of: str, last_close: float, completeness: float,
+              staleness_days: int) -> Prediction:
+    """Run the loaded model bundle over one prepared feature row."""
+    features: list[str] = bundle["features"]
+    X = row[features].to_frame().T.astype(float)
+    medians = pd.Series(bundle["feature_stats"]["median"])
+    X = X.fillna(medians).fillna(0.0)
+
+    member_probas = [
+        float(c.predict_proba(X)[0, 1]) for c in bundle["classifiers"].values()
+    ]
+    proba_up = float(np.mean(member_probas))
+    expected_move = float(bundle["regressor"].predict(X)[0])
+
+    # Likely touch range from the quantile models, kept internally
+    # consistent: high >= max(move, 0), low <= min(move, 0).
+    high_pct = float(bundle["high_regressor"].predict(X)[0])
+    low_pct = float(bundle["low_regressor"].predict(X)[0])
+    high_pct = max(high_pct, expected_move, 0.0)
+    low_pct = min(low_pct, expected_move, 0.0)
+
+    conf = confidence_score(
+        proba_up=proba_up,
+        member_probas=member_probas,
+        completeness=completeness,
+        staleness_days=staleness_days,
+        validation_accuracy=bundle["metrics"]["ensemble_accuracy"],
+        india_vix=float(row["india_vix"]) if pd.notna(row.get("india_vix")) else None,
+    )
+    explanation = explain(bundle["classifiers"], X.iloc[0], bundle["feature_stats"])
+
+    prediction = Prediction(
+        symbol=symbol,
+        as_of=as_of,
+        horizon_days=bundle["config"]["horizon_days"],
+        direction="UP" if proba_up >= 0.5 else "DOWN",
+        probability_up=round(proba_up, 4),
+        expected_move_pct=round(expected_move, 3),
+        price={
+            "last_close": round(last_close, 2),
+            "expected_close": round(last_close * (1 + expected_move / 100), 2),
+            "likely_high_touch": round(last_close * (1 + high_pct / 100), 2),
+            "likely_low_touch": round(last_close * (1 + low_pct / 100), 2),
+        },
+        confidence=conf,
+        explanation=explanation,
+        model_version=version,
+    )
+    _store(prediction)
+    log.info("%s: %s (p=%.2f, move=%.2f%%, range %.2f..%.2f, confidence=%.0f)",
+             symbol, prediction.direction, proba_up, expected_move,
+             prediction.price["likely_low_touch"],
+             prediction.price["likely_high_touch"], conf["score"])
+    return prediction
+
+
 def predict(symbol: str, config: PipelineConfig | None = None,
             registry: ModelRegistry | None = None) -> Prediction:
+    """Predict a universe symbol from its latest master-dataset row."""
     config = config or PipelineConfig()
     registry = registry or ModelRegistry()
 
@@ -60,7 +123,6 @@ def predict(symbol: str, config: PipelineConfig | None = None,
         raise KeyError(f"symbol {symbol} not present in master dataset")
     latest = rows.iloc[-1]
 
-    # Validate completeness before inferring (design doc §14).
     completeness = float(latest[features].notna().mean())
     if completeness < config.min_feature_completeness:
         raise ValueError(
@@ -68,42 +130,14 @@ def predict(symbol: str, config: PipelineConfig | None = None,
             f"{config.min_feature_completeness:.0%} for {symbol}; refresh collectors"
         )
 
-    X = latest[features].to_frame().T.astype(float)
-    medians = pd.Series(bundle["feature_stats"]["median"])
-    X = X.fillna(medians).fillna(0.0)
-
-    member_probas = [
-        float(c.predict_proba(X)[0, 1]) for c in bundle["classifiers"].values()
-    ]
-    proba_up = float(np.mean(member_probas))
-    expected_move = float(bundle["regressor"].predict(X)[0])
-
     staleness = (pd.Timestamp.today().normalize() - latest["date"].normalize()).days
-    conf = confidence_score(
-        proba_up=proba_up,
-        member_probas=member_probas,
+    return infer_row(
+        bundle, version, symbol, latest,
+        as_of=str(latest["date"].date()),
+        last_close=float(latest["close"]),
         completeness=completeness,
         staleness_days=max(staleness - 1, 0),  # data as of last close is fresh
-        validation_accuracy=bundle["metrics"]["ensemble_accuracy"],
-        india_vix=float(latest["india_vix"]) if pd.notna(latest.get("india_vix")) else None,
     )
-    explanation = explain(bundle["classifiers"], X.iloc[0], bundle["feature_stats"])
-
-    prediction = Prediction(
-        symbol=symbol,
-        as_of=str(latest["date"].date()),
-        horizon_days=bundle["config"]["horizon_days"],
-        direction="UP" if proba_up >= 0.5 else "DOWN",
-        probability_up=round(proba_up, 4),
-        expected_move_pct=round(expected_move, 3),
-        confidence=conf,
-        explanation=explanation,
-        model_version=version,
-    )
-    _store(prediction)
-    log.info("%s: %s (p=%.2f, move=%.2f%%, confidence=%.0f)", symbol,
-             prediction.direction, proba_up, expected_move, conf["score"])
-    return prediction
 
 
 def _store(prediction: Prediction) -> None:
@@ -114,6 +148,10 @@ def _store(prediction: Prediction) -> None:
             "symbol", "as_of", "horizon_days", "direction", "probability_up",
             "expected_move_pct", "model_version", "generated_at",
         )},
+        "last_close": record["price"]["last_close"],
+        "expected_close": record["price"]["expected_close"],
+        "likely_high_touch": record["price"]["likely_high_touch"],
+        "likely_low_touch": record["price"]["likely_low_touch"],
         "confidence_score": record["confidence"]["score"],
         "explanation_summary": record["explanation"]["summary"],
         "detail_json": json.dumps(

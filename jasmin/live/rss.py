@@ -51,25 +51,30 @@ def parse_rss(content: bytes) -> list[dict]:
     return items
 
 
-def match_symbol(headline: str, symbols: list[str]) -> str | None:
+def match_symbol(headline: str, symbols: list[str],
+                 extra_aliases: dict[str, list[str]] | None = None) -> str | None:
     """Match a headline to the first universe symbol whose alias appears."""
     text = f" {headline.lower()} "
     for sym in symbols:
-        for alias in COMPANY_ALIASES.get(sym, [sym.lower()]):
+        aliases = COMPANY_ALIASES.get(sym, [sym.lower()])
+        if extra_aliases and sym in extra_aliases:
+            aliases = list(aliases) + extra_aliases[sym]
+        for alias in aliases:
             if re.search(rf"(?<![a-z0-9]){re.escape(alias.lower())}(?![a-z0-9])", text):
                 return sym
     return None
 
 
 def fetch_news(symbols: list[str], feeds: list[str] | None = None,
-               client: HttpClient | None = None) -> pd.DataFrame:
+               client: HttpClient | None = None,
+               extra_aliases: dict[str, list[str]] | None = None) -> pd.DataFrame:
     """Fetch feeds, match to symbols, and merge into the accumulated log."""
     http = client or HttpClient()
     rows = []
     for url in feeds or DEFAULT_FEEDS:
         try:
             for item in parse_rss(http.get(url)):
-                sym = match_symbol(item["headline"], symbols)
+                sym = match_symbol(item["headline"], symbols, extra_aliases)
                 if sym:
                     rows.append({**item, "symbol": sym})
         except Exception as exc:

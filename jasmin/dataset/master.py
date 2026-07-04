@@ -5,7 +5,9 @@ outputs, attaches forward-looking labels, and appends the result to the
 master dataset in data/master/. Labels:
 
   - target_up:       close in `horizon_days` is above today's close
-  - target_move_pct: percentage move over the horizon (regression target)
+  - target_move_pct: percentage close-to-close move over the horizon
+  - target_high_pct: highest price touched over the horizon vs today's close
+  - target_low_pct:  lowest price touched over the horizon vs today's close
 
 The last `horizon_days` rows per symbol have no label yet ("new labels
 become available after market movement", design doc §17); they are kept
@@ -30,10 +32,22 @@ MASTER_PATH = MASTER_DIR / "master.csv"
 
 def _add_labels(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
-    future_close = df.groupby("symbol")["close"].shift(-horizon)
+    grouped = df.groupby("symbol")
+    future_close = grouped["close"].shift(-horizon)
     df["target_move_pct"] = (future_close / df["close"] - 1) * 100
     df["target_up"] = (df["target_move_pct"] > 0).astype(float)
     df.loc[df["target_move_pct"].isna(), "target_up"] = float("nan")
+
+    # Range the stock touches over the horizon (next session for horizon=1):
+    # the basis for "price it might touch" targets.
+    future_high = grouped["high"].transform(
+        lambda s: s.shift(-horizon).rolling(horizon, min_periods=horizon).max()
+    )
+    future_low = grouped["low"].transform(
+        lambda s: s.shift(-horizon).rolling(horizon, min_periods=horizon).min()
+    )
+    df["target_high_pct"] = (future_high / df["close"] - 1) * 100
+    df["target_low_pct"] = (future_low / df["close"] - 1) * 100
     return df
 
 

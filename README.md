@@ -31,7 +31,30 @@ Every stage is an independent module — any collector, feature generator or mod
 ```bash
 pip install -e .
 jasmin premarket            # live data -> train -> predict all -> market summary
+jasmin analyze tata steel   # analyze ANY stock by name or ticker
 jasmin cycle --offline      # same pipeline on synthetic data (no network needed)
+```
+
+## Analyze any stock
+
+`jasmin analyze <name or ticker>` (or `GET /analyze?q=...`) takes free text — `"tata steel"`, `"INFY"`, `"asian paints"` — resolves it to an NSE listing, and analyzes it against the market. Stocks in the trained universe use their master-dataset features; anything else is built live on the spot: 2 years of the stock's prices and its current fundamentals are fetched, merged with the same market context (macro, FII/DII flows, news), and scored by the trained model. This works because every feature is symbol-relative (returns, ratios, relative strength) rather than absolute.
+
+The answer includes **price targets** from dedicated quantile range models trained on how far stocks actually travel in a session:
+
+```json
+{
+  "direction": "UP",
+  "probability_up": 0.58,
+  "expected_move_pct": 0.31,
+  "price": {
+    "last_close": 3450.10,
+    "expected_close": 3460.80,
+    "likely_high_touch": 3492.55,
+    "likely_low_touch": 3421.30
+  },
+  "confidence": {"score": 61.2},
+  "explanation": {"summary": "Supported by ..."}
+}
 ```
 
 Or stage by stage:
@@ -80,6 +103,7 @@ Example prediction:
 | `GET /health` | Service liveness + live model version |
 | `GET /universe` | Configured symbol universe |
 | `GET /predict/{symbol}` | Full prediction with explanation & confidence |
+| `GET /analyze?q=...` | Analyze any stock by free-text name or ticker, with price targets |
 | `GET /market-summary` | Aggregated view: bias, sectors, top picks, macro context |
 | `GET /market-status` | NSE calendar status (IST) |
 | `GET /predictions` | Recent prediction audit log |
