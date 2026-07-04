@@ -60,3 +60,37 @@ def test_empty_news_aggregation(workspace):
     out = _aggregate_news(empty)
     assert out.empty
     assert str(out["date"].dtype) == "datetime64[ns]"
+
+
+def test_regime_key_buckets(workspace):
+    from jasmin.models.train import regime_key
+
+    assert regime_key(10.0, 0.01) == "calm_up"
+    assert regime_key(18.0, -0.01) == "elevated_down"
+    assert regime_key(30.0, 0.0) == "stressed_up"
+    assert regime_key(float("nan"), float("nan")) == "elevated_down"
+
+
+def test_bundle_has_regime_accuracy_and_prediction_uses_it(trained_pipeline):
+    from jasmin.models.registry import ModelRegistry
+    from jasmin.prediction import predict
+
+    _, bundle = ModelRegistry().latest_approved()
+    assert "regime_accuracy" in bundle
+    for stats in bundle["regime_accuracy"].values():
+        assert 0.0 <= stats["accuracy"] <= 1.0
+        assert stats["n"] > 0
+
+    pred = predict("HDFCBANK", config=trained_pipeline["config"])
+    assert "regime" in pred.confidence
+    assert pred.confidence["regime"]["key"].count("_") == 1
+    assert 0.0 <= pred.confidence["regime"]["accuracy_basis"] <= 1.0
+
+
+def test_ensemble_has_three_members(trained_pipeline):
+    from jasmin.models.registry import ModelRegistry
+
+    _, bundle = ModelRegistry().latest_approved()
+    assert set(bundle["classifiers"]) == {
+        "gradient_boosting", "random_forest", "hist_gradient_boosting"
+    }

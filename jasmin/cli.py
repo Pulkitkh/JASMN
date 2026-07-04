@@ -31,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_collect = sub.add_parser("collect", help="run all data collectors")
-    p_collect.add_argument("--days", type=int, default=400)
+    p_collect.add_argument("--days", type=int, default=None,
+                           help="trading days of history (default: config.history_days)")
     p_collect.add_argument("--offline", action="store_true",
                            help="force synthetic sources (no network)")
 
@@ -47,13 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     p_analyze.add_argument("query", nargs="+", help="stock name or NSE ticker")
 
     p_cycle = sub.add_parser("cycle", help="run the full pipeline end to end")
-    p_cycle.add_argument("--days", type=int, default=400)
+    p_cycle.add_argument("--days", type=int, default=None)
     p_cycle.add_argument("--offline", action="store_true")
 
     p_pre = sub.add_parser(
         "premarket", help="live data refresh + predictions + market summary"
     )
-    p_pre.add_argument("--days", type=int, default=400)
+    p_pre.add_argument("--days", type=int, default=None)
     p_pre.add_argument("--no-retrain", action="store_true",
                        help="reuse the approved model instead of retraining")
     p_pre.add_argument("--offline", action="store_true")

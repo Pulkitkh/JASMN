@@ -73,14 +73,27 @@ def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
     high_pct = max(high_pct, expected_move, 0.0)
     low_pct = min(low_pct, expected_move, 0.0)
 
+    # Conditional accuracy: judge the model by how it has performed in
+    # market conditions like today's, not by its global average.
+    from jasmin.models.train import regime_key
+
+    vix = float(row["india_vix"]) if pd.notna(row.get("india_vix")) else None
+    nifty_5d = float(row["nifty_return_5d"]) if pd.notna(row.get("nifty_return_5d")) else float("nan")
+    regime = regime_key(vix if vix is not None else float("nan"), nifty_5d)
+    accuracy = bundle["metrics"]["ensemble_accuracy"]
+    regime_stats = bundle.get("regime_accuracy", {}).get(regime)
+    if regime_stats and regime_stats["n"] >= 50:
+        accuracy = regime_stats["accuracy"]
+
     conf = confidence_score(
         proba_up=proba_up,
         member_probas=member_probas,
         completeness=completeness,
         staleness_days=staleness_days,
-        validation_accuracy=bundle["metrics"]["ensemble_accuracy"],
-        india_vix=float(row["india_vix"]) if pd.notna(row.get("india_vix")) else None,
+        validation_accuracy=accuracy,
+        india_vix=vix,
     )
+    conf["regime"] = {"key": regime, "accuracy_basis": round(float(accuracy), 4)}
     explanation = explain(bundle["classifiers"], X.iloc[0], bundle["feature_stats"])
 
     prediction = Prediction(
