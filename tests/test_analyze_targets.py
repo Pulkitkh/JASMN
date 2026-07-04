@@ -62,7 +62,7 @@ def test_analyze_uses_fast_path_for_universe_symbol(trained_pipeline, monkeypatc
     )
     result = analyze_mod.analyze("RELIANCE", config=trained_pipeline["config"])
     assert result["resolved"]["symbol"] == "RELIANCE"
-    assert result["prediction"]["direction"] in ("UP", "DOWN")
+    assert result["prediction"]["direction"] in ("UP", "DOWN", "NEUTRAL")
     assert "price" in result["prediction"]
 
 

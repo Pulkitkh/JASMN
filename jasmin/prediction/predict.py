@@ -93,6 +93,14 @@ def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
     if regime_stats and regime_stats["n"] >= 50:
         accuracy = regime_stats["accuracy"]
 
+    # Direction and expected move must tell one story. When the classifier
+    # and regressor point opposite ways on a meaningful move, the honest
+    # stance is NEUTRAL ("no edge"), with confidence reduced.
+    clf_direction = "UP" if proba_up >= 0.5 else "DOWN"
+    move_direction = "UP" if expected_move >= 0 else "DOWN"
+    aligned = clf_direction == move_direction or abs(expected_move) < 0.1
+    direction = clf_direction if aligned else "NEUTRAL"
+
     conf = confidence_score(
         proba_up=proba_up,
         member_probas=member_probas,
@@ -100,15 +108,21 @@ def infer_row(bundle: dict, version: str, symbol: str, row: pd.Series,
         staleness_days=staleness_days,
         validation_accuracy=accuracy,
         india_vix=vix,
+        signal_aligned=aligned,
     )
     conf["regime"] = {"key": regime, "accuracy_basis": round(float(accuracy), 4)}
+    if not aligned:
+        conf["note"] = (
+            "direction classifier and expected-move regressor disagree; "
+            "treat as no clear edge"
+        )
     explanation = explain(bundle["classifiers"], X.iloc[0], bundle["feature_stats"])
 
     prediction = Prediction(
         symbol=symbol,
         as_of=as_of,
         horizon_days=bundle["config"]["horizon_days"],
-        direction="UP" if proba_up >= 0.5 else "DOWN",
+        direction=direction,
         probability_up=round(proba_up, 4),
         expected_move_pct=round(expected_move, 3),
         price={

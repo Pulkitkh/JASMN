@@ -11,12 +11,16 @@ from __future__ import annotations
 import numpy as np
 
 _WEIGHTS = {
-    "probability_strength": 0.30,
-    "model_agreement": 0.25,
-    "feature_completeness": 0.15,
-    "data_freshness": 0.10,
-    "historical_accuracy": 0.10,
-    "volatility_regime": 0.10,
+    "probability_strength": 0.27,
+    "model_agreement": 0.22,
+    "feature_completeness": 0.13,
+    "data_freshness": 0.09,
+    "historical_accuracy": 0.09,
+    "volatility_regime": 0.09,
+    # Direction classifier and expected-move regressor pointing the same
+    # way. When they conflict, the honest stance is "no edge" and the
+    # score drops accordingly.
+    "signal_alignment": 0.11,
 }
 
 
@@ -27,8 +31,10 @@ def confidence_score(
     staleness_days: int,
     validation_accuracy: float,
     india_vix: float | None,
+    signal_aligned: bool = True,
 ) -> dict:
     components = {
+        "signal_alignment": 1.0 if signal_aligned else 0.0,
         # 0.5 proba -> 0, 0/1 proba -> 1
         "probability_strength": abs(proba_up - 0.5) * 2,
         # members on the same side of 0.5 and close together -> high agreement
